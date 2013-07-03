@@ -1,14 +1,38 @@
 #include <iostream>
 #include <OpenNI.h>
 #include <cmath>
+#include "ros/ros.h"
+#include "Serial_Q.h"
 
 #define PI 3.14159265359
+#define PAN_RESOLUTION 	185.1428
+#define TILT_RESOLUTION 185.1428
+#define SERIALDEVICE	"/dev/ttyUSB0"
+
+#define PAN		0
+#define TILT 	1
+
+#define ABSOLUTE 0
+#define RELATIVE 1
+
+enum estado {
+	IDLE = 0,
+	WAIT_COMMAND_CONF = 1,
+	WAIT_POS_PAN = 2,
+	WAIT_POS_TILT = 3
+};
+
+estado STATUS = IDLE;
 
 using namespace std;
 
 openni::Status theStatus;
 openni::Device theDevice;
 openni::VideoStream theDepth;
+
+//ros::NodeHandle* myNodeHandle = 0;
+
+Serial::Serial_Q *Ptu;
 
 class Pixel3D {
 
@@ -99,11 +123,11 @@ public:
 	}
 
 	void printPanTilt() {
-		printf("MODULO: %g, PAN: %g, TILT: %g                   \n",this->getModulo(),this->getPan(),this->getTilt());
+		printf("MODULO: %g, PAN: %g, TILT: %g \n",this->getModulo(),this->getPan(),this->getTilt());
 	}
 
 	void printPanTiltDeg() {
-		printf("MODULO: %d, PAN: %d, TILT: %d                   \n",(int)this->getModulo(),(int)(this->getPan()*180/PI),(int)(this->getTilt()*180/PI));
+		printf("MODULO: %d, PAN: %d, TILT: %d \n",(int)this->getModulo(),(int)(this->getPan()*180/PI),(int)(this->getTilt()*180/PI));
 	}
 
 };
@@ -140,9 +164,217 @@ openni::Status calculaPuntoMasCercano(Pixel3D* closestPoint, openni::VideoFrameR
 	return openni::STATUS_OK;
 }
 
+bool getPosCommand(float inDeg, int inTargetJoint, int inMode, char* outCommand) {
+
+	int thePosVal;
+	char theParam = 'P';
+	char theMode = ABSOLUTE;
+	bool ok = true;
+
+	switch(inTargetJoint) {
+		case PAN:
+			thePosVal = (int) (inDeg * 3600 / PAN_RESOLUTION);
+			theParam = 'P';
+			break;
+		case TILT:
+			thePosVal = (int) (inDeg * 3600 / TILT_RESOLUTION);
+			theParam = 'T';
+			break;
+		default: 	// inesperado
+			ok = false;
+	}
+
+	switch (inMode) {
+		case ABSOLUTE:	// PP o TP
+			theMode = 'P';
+			break;
+		case RELATIVE:	// PO o TO
+			theMode = 'O';
+			break;
+		default: 	// inesperado
+			ok = false;
+	}
+
+	if (ok) {
+		sprintf(outCommand,"%c%c%d ",theParam,theMode,thePosVal);
+	}
+
+	printf("%s\n",outCommand);
+
+	return ok;
+
+}
+
+bool extractInt(const string inStr, int* outNum) {
+
+	stringstream ss(inStr);
+	string tmp;
+	ss >> tmp >> *outNum;
+	return true;
+
+}
+
+void processPtuComm() {
+
+	string theResp;
+	std::size_t theFound;
+
+	if (Ptu->checkDataAndEnqueue()) {
+
+		theResp.assign((char *)Ptu->getFullQueueContent(true));
+
+		// Un signo de exclamación indica que se ha producido un error
+
+		theFound = theResp.find("!");
+		if (theFound != string::npos) {
+			STATUS = IDLE;
+			printf("PTU-46 ha devuelto un error: %s",theResp.c_str());
+			return;
+		}
+
+		switch (STATUS) {
+
+			case IDLE:
+
+				// Recepción inesperada
+				// Mostramos datos recibidos
+
+				ROS_ERROR("PTU-46 ha enviado un dato inesperado: %s",theResp.c_str());
+
+				break;
+
+			case WAIT_COMMAND_CONF:
+
+				theFound = theResp.find("*");
+				if (theFound != string::npos) {
+					printf("PTU-46 ha confirmado la última orden: %s",theResp.c_str());
+					STATUS = IDLE;
+				}
+
+				break;
+
+			case WAIT_POS_PAN:
+
+				break;
+
+			case WAIT_POS_TILT:
+
+				// Comprobamos que el comando se ha admitido
+				// Y eliminamos el asterisco de confirmación
+
+				int thePos;
+
+				theFound = theResp.find("*");
+				if (theFound != string::npos) {
+					theResp.erase(0,theFound+1);
+					STATUS = IDLE;
+				}
+
+				// Leemos el dato devuelto
+
+				if (extractInt(theResp,&thePos)) {
+
+					float theDeg;
+
+					if (STATUS == WAIT_POS_PAN) {
+						theDeg = (float)thePos * PAN_RESOLUTION / 3600;
+						//thePtuJointState.position[0] = theDeg;
+					} else if (STATUS == WAIT_POS_TILT) {
+						theDeg = (float)thePos * TILT_RESOLUTION / 3600;
+						//thePtuJointState.position[1] = theDeg;
+					}
+
+				}
+
+				STATUS = IDLE;
+				break;
+
+			default:
+
+				STATUS = IDLE;
+				break;
+
+		}
+
+	}
+
+	return;
+
+}
+
+void movePtu(float inPanDeg, float inTiltDeg) {
+
+	char thePanCommand[16];
+	char theTiltCommand[16];
+	bool theBuildCommandOk = false;
+
+	theBuildCommandOk = getPosCommand(inPanDeg,PAN,RELATIVE,thePanCommand);
+
+
+	theBuildCommandOk = theBuildCommandOk && getPosCommand(inTiltDeg,TILT,RELATIVE,theTiltCommand);
+
+	if (theBuildCommandOk) {
+		if (Ptu->send(thePanCommand) > 0) {
+			STATUS = WAIT_COMMAND_CONF;
+			processPtuComm();
+			//Ptu->send("A ");
+		}
+		if (Ptu->send(theTiltCommand) > 0) {
+			STATUS = WAIT_COMMAND_CONF;
+			processPtuComm();
+			//Ptu->send("A ");
+		}
+	} else {
+		// Error construyendo mensaje. no enviar nada
+		// ...
+	}
+
+}
+
+int ceroPtu() {
+
+	Ptu->send("I ");	// Modo inmediato
+	usleep(100000);
+	processPtuComm();
+	Ptu->send("FT ");	// Respuestas escuetas
+	usleep(100000);
+	processPtuComm();
+	Ptu->send("PP0 ");	// Posición PAN 0
+	usleep(100000);
+	processPtuComm();
+	Ptu->send("A ");	// Espera alcanzar las posiciones indicadas
+	usleep(100000);
+	processPtuComm();
+	Ptu->send("TP-300 ");	// Posición TILT max
+	usleep(100000);
+	processPtuComm();
+	Ptu->send("A ");	// Espera alcanzar las posiciones indicadas
+	usleep(100000);
+	processPtuComm();
+	Ptu->send("TP600 ");	// Posición TILT max
+	usleep(100000);
+	processPtuComm();
+	Ptu->send("A ");	// Espera alcanzar las posiciones indicadas
+	usleep(100000);
+	processPtuComm();
+
+}
+
 int main(int argc, char ** argv) {
 
-	cout << "Inicializando ...";
+	cout << "Inicializando PTU ..." << endl;
+
+	// Init PTU-46
+
+	Ptu = new Serial::Serial_Q(SERIALDEVICE, B9600);
+
+	ceroPtu();
+
+	usleep(500000);
+
+	movePtu(0,-20);
+
+	cout << "Inicializando OpenNI ..." << endl;
 	theStatus = openni::OpenNI::initialize();
 
 	if (theStatus != openni::STATUS_OK) {
@@ -195,6 +427,8 @@ int main(int argc, char ** argv) {
 	Point theRealPoint;
 	Point theOrigin;
 
+	float thePanDeg, theTiltDeg, theDist;
+
 	// Por cada cuadro recibido se obtiene el punto más cercano y se muestra por pantalla
 	while(theDepth.isValid()){
 
@@ -205,9 +439,23 @@ int main(int argc, char ** argv) {
 			calculaPuntoMasCercano(&theClosestPoint,&theRawFrame);
 			//theClosestPoint.print();
 			openni::CoordinateConverter::convertDepthToWorld(theDepth,theClosestPoint.X,theClosestPoint.Y,theClosestPoint.Z,&theRealPoint.X, &theRealPoint.Y, &theRealPoint.Z);
+
 			theRealPoint.print();
 			Vector theV(theOrigin, theRealPoint);
+
+			thePanDeg = theV.getPan()*180/PI;
+			theTiltDeg = theV.getTilt()*180/PI - 90;
+			theDist = theV.getModulo();
+
+			//if (theDist > 600) {
+			if ((abs(thePanDeg) > 2)||(abs(theTiltDeg) > 2)) {
+				movePtu(0.9*thePanDeg, -0.9*theTiltDeg);
+			}
+			//}
+
 			theV.printPanTiltDeg();
+
+			usleep(1500000);
 		}
 
 	}
