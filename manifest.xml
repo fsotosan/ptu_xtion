@@ -1,0 +1,15 @@
+<package>
+  <description brief="ptu_xtion">
+
+     ptu_xtion
+
+  </description>
+  <author>youbot</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/ptu_xtion</url>
+  <depend package="roscpp"/>
+
+</package>
+
+
