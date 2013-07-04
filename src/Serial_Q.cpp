@@ -202,9 +202,12 @@ namespace Serial {
 	// Se asume que la cadena está correctamente terminada (por '\0')
 
 	int Serial::send(const char* inBytes) {
-		int theNumBytes, theBytesSent;
-		theNumBytes = strlen(inBytes);
-		theBytesSent = write(this->myHandler,inBytes, theNumBytes);
+		return this->send(inBytes,strlen(inBytes));
+	}
+
+	int Serial::send(const char* inBytes,int inNumBytes) {
+		int theBytesSent;
+		theBytesSent = write(this->myHandler,inBytes, inNumBytes);
 		cout << "Serial::send. Enviados " << theBytesSent << " bytes" << endl;
 		return theBytesSent;
 	}
@@ -215,7 +218,7 @@ namespace Serial {
 
 		int theBytesReceived;
 		theBytesReceived = read(this->myHandler,inBytes, inMaxNumBytes);
-		cout << "Serial::receive. Recibidos " << theBytesReceived << " bytes" << endl;
+		//cout << "Serial::receive. Recibidos " << theBytesReceived << " bytes" << endl;
 		return theBytesReceived;
 	}
 

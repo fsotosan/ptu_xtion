@@ -334,28 +334,28 @@ void movePtu(float inPanDeg, float inTiltDeg) {
 int ceroPtu() {
 
 	Ptu->send("I ");	// Modo inmediato
-	usleep(100000);
+	usleep(200000);
 	processPtuComm();
 	Ptu->send("FT ");	// Respuestas escuetas
-	usleep(100000);
+	usleep(200000);
 	processPtuComm();
 	Ptu->send("PP0 ");	// Posición PAN 0
-	usleep(100000);
+	usleep(200000);
 	processPtuComm();
 	Ptu->send("A ");	// Espera alcanzar las posiciones indicadas
-	usleep(100000);
+	usleep(200000);
 	processPtuComm();
 	Ptu->send("TP-300 ");	// Posición TILT max
-	usleep(100000);
+	usleep(200000);
 	processPtuComm();
 	Ptu->send("A ");	// Espera alcanzar las posiciones indicadas
-	usleep(100000);
+	usleep(200000);
 	processPtuComm();
 	Ptu->send("TP600 ");	// Posición TILT max
-	usleep(100000);
+	usleep(200000);
 	processPtuComm();
 	Ptu->send("A ");	// Espera alcanzar las posiciones indicadas
-	usleep(100000);
+	usleep(200000);
 	processPtuComm();
 
 }

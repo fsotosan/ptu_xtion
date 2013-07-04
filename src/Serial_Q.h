@@ -82,6 +82,7 @@ namespace Serial {
 
 		bool connect();
 		int send(const char* inBytes);
+		int send(const char* inBytes, int inNumBytes);
 		int receive(char* inBytes, int inMaxNumBytes);
 
 	};
