@@ -15,6 +15,8 @@
 #define ABSOLUTE 0
 #define RELATIVE 1
 
+#define OFFSET_CAMARA_EJE_TILT_MM 60
+
 enum estado {
 	IDLE = 0,
 	WAIT_COMMAND_CONF = 1,
@@ -97,10 +99,15 @@ public:
 	}
 
 	float getTilt() {
+		return getTiltConsideringOffsetY(0);
+	}
+
+	float getTiltConsideringOffsetY(float inOffsetY) {
 
 		float theModulo = this->getModulo();
-		if (theModulo > 0) {
-			return acos(this->Y/theModulo);
+		float theCosPan = cos(getPan());
+		if ((theModulo > 0)&&(theCosPan > 0)) {
+			return asin((sqrt(theModulo*theModulo - inOffsetY*inOffsetY)*this->Y - inOffsetY*this->Z / theCosPan)/(theModulo*theModulo));
 		} else {
 			return 0.0;
 		}
@@ -109,13 +116,12 @@ public:
 
 	float getPan() {
 
-		float sinTilt = sin(this->getTilt());
-		float theModulo = this->getModulo();
-		if ((sinTilt > 0)&&(theModulo > 0)) {
-			return asin(this->X / (theModulo*sinTilt));
+		if (this->Z > 0) {
+			return atan2(this->X, this->Z);
 		} else {
 			return 0.0;
 		}
+
 	}
 
 	void print() {
@@ -331,7 +337,7 @@ void movePtu(float inPanDeg, float inTiltDeg) {
 
 }
 
-int ceroPtu() {
+void ceroPtu() {
 
 	Ptu->send("I ");	// Modo inmediato
 	usleep(200000);
@@ -440,16 +446,21 @@ int main(int argc, char ** argv) {
 			//theClosestPoint.print();
 			openni::CoordinateConverter::convertDepthToWorld(theDepth,theClosestPoint.X,theClosestPoint.Y,theClosestPoint.Z,&theRealPoint.X, &theRealPoint.Y, &theRealPoint.Z);
 
+			// Adaptamos las coordenadas para considerar el desajuste
+			// entre las coordenadas de la cámara y las de la base pan-tilt
+
+			theRealPoint.Y += OFFSET_CAMARA_EJE_TILT_MM / 1000;
+
 			theRealPoint.print();
 			Vector theV(theOrigin, theRealPoint);
 
 			thePanDeg = theV.getPan()*180/PI;
-			theTiltDeg = theV.getTilt()*180/PI - 90;
+			theTiltDeg = theV.getTiltConsideringOffsetY(OFFSET_CAMARA_EJE_TILT_MM / 1000)*180/PI - 90;
 			theDist = theV.getModulo();
 
 			//if (theDist > 600) {
 			if ((abs(thePanDeg) > 2)||(abs(theTiltDeg) > 2)) {
-				movePtu(0.9*thePanDeg, -0.9*theTiltDeg);
+				movePtu(thePanDeg, -theTiltDeg);
 			}
 			//}
 
