@@ -15,7 +15,7 @@
 #define ABSOLUTE 0
 #define RELATIVE 1
 
-#define OFFSET_CAMARA_EJE_TILT_MM 60
+#define OFFSET_CAMARA_EJE_TILT_MM 70
 
 enum estado {
 	IDLE = 0,
@@ -106,7 +106,7 @@ public:
 
 		float theModulo = this->getModulo();
 		float theCosPan = cos(getPan());
-		if ((theModulo > 0)&&(theCosPan > 0)) {
+		if ((theModulo > 0)&&(theCosPan != 0)) {
 			return asin((sqrt(theModulo*theModulo - inOffsetY*inOffsetY)*this->Y - inOffsetY*this->Z / theCosPan)/(theModulo*theModulo));
 		} else {
 			return 0.0;
@@ -455,12 +455,13 @@ int main(int argc, char ** argv) {
 			Vector theV(theOrigin, theRealPoint);
 
 			thePanDeg = theV.getPan()*180/PI;
-			theTiltDeg = theV.getTiltConsideringOffsetY(OFFSET_CAMARA_EJE_TILT_MM / 1000)*180/PI - 90;
+			//theTiltDeg = theV.getTiltConsideringOffsetY(OFFSET_CAMARA_EJE_TILT_MM / 1000)*180/PI - 90;
+			theTiltDeg = theV.getTiltConsideringOffsetY(OFFSET_CAMARA_EJE_TILT_MM / 1000)*180/PI;
 			theDist = theV.getModulo();
 
 			//if (theDist > 600) {
 			if ((abs(thePanDeg) > 2)||(abs(theTiltDeg) > 2)) {
-				movePtu(thePanDeg, -theTiltDeg);
+				movePtu(thePanDeg, theTiltDeg);
 			}
 			//}
 
